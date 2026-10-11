@@ -48,6 +48,7 @@ def style(fig: go.Figure, title: str, y_title: str = "", x_title: str = "", heig
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font={"color": INK, "size": 12},
         margin={"l": 60, "r": 20, "t": 95, "b": 50}, hovermode="x unified",
         legend={"orientation": "h", "y": 1.02, "yanchor": "bottom", "x": 0, "bgcolor": "rgba(0,0,0,0)"},
+        modebar={"orientation": "v", "bgcolor": "rgba(0,0,0,0)"},   # toolbar on the side, off the title
     )
     grid = {"gridcolor": "rgba(128,128,128,0.18)", "zerolinecolor": "rgba(128,128,128,0.3)", "linecolor": "rgba(128,128,128,0.4)"}
     fig.update_xaxes(title=x_title, **grid)
@@ -74,16 +75,19 @@ def metrics_table(block: str) -> pd.DataFrame:
 
 
 def prediction_vs_actual(block: str) -> go.Figure:
-    """Rolling one-month average of each model's predicted probability against how often vol actually rose."""
+    """Rolling 3-month average of each model's predicted probability against how often vol actually rose.
+
+    Three months, not one: consecutive labels share 20 of 21 future returns, so a 21-day
+    window of labels swings between 0% and 100% and hides the comparison."""
     idx = BLOCKS[block].index
     fig = go.Figure()
-    actual = pd.Series(Y[block], index=idx).rolling(21).mean()
+    actual = pd.Series(Y[block], index=idx).rolling(63).mean()
     fig.add_trace(go.Scatter(x=idx, y=actual, name="Actual: share of days vol rose", line={"color": GRAY, "width": 2}))
     for m in NAMES:
-        p = pd.Series(PROBS[block][m], index=idx).rolling(21).mean()
+        p = pd.Series(PROBS[block][m], index=idx).rolling(63).mean()
         fig.add_trace(go.Scatter(x=idx, y=p, name=NAMES[m], line={"color": COLORS[m], "width": 2, "dash": DASHES[m]}))
     fig.update_yaxes(range=[0, 1], tickformat=".0%", hoverformat=".1%")
-    return style(fig, "Predicted probability vs actual outcome (21-day rolling average)", "Probability vol rises")
+    return style(fig, "Predicted probability vs actual outcome (3-month rolling average)", "Probability vol rises")
 
 
 def calibration(block: str) -> go.Figure:
@@ -157,8 +161,10 @@ def feature_distribution(feature: str) -> tuple[go.Figure, str]:
 
 def target_by_year() -> go.Figure:
     labelled = DATA[DATA["split"].isin(["train", "val", "test"])]
-    rate = labelled.groupby(labelled.index.year)["vol_rises"].mean()
-    split_of_year = labelled.groupby(labelled.index.year)["split"].agg(lambda s: s.mode()[0])
+    by_year = labelled.groupby(labelled.index.year)
+    enough = by_year.size() >= 100          # 1990 has a single labelled day after the 1-year warm-up
+    rate = by_year["vol_rises"].mean()[enough]
+    split_of_year = by_year["split"].agg(lambda s: s.mode()[0])[enough]
     colors = split_of_year.map({"train": COLORS["sklearn"], "val": COLORS["torch_manual"], "test": COLORS["torch_module"]})
     fig = go.Figure(go.Bar(x=rate.index, y=rate.values, marker={"color": list(colors), "line": {"width": 0}},
                            hovertemplate="%{x}: %{y:.0%} of days<extra></extra>", showlegend=False))
@@ -196,7 +202,9 @@ def confusion_figure(tp, fp, tn, fn) -> go.Figure:
                                showscale=False, xgap=2, ygap=2, hovertemplate="%{y}, %{x}: %{z} days<extra></extra>"))
     fig.update_yaxes(autorange="reversed")
     fig.update_layout(hovermode="closest")
-    return style(fig, "Confusion matrix", "Actual", "Decision", height=340)
+    fig = style(fig, "Confusion matrix", "Actual", "Decision", height=340)
+    fig.update_layout(margin={"l": 140})
+    return fig
 
 
 def cost_curve(block: str, model: str, threshold: float, k: float, t_opt: float) -> go.Figure:
@@ -282,11 +290,11 @@ def build() -> gr.Blocks:
         with gr.Tab("Model comparison"):
             block1 = gr.Radio(list(BLOCK_LABELS), value="Test (2020 to 2026)", label="Block")
             table = gr.Dataframe(metrics_table("test"), label="Three implementations against the baselines", interactive=False)
-            pva = gr.Plot(prediction_vs_actual("test"))
-            cal = gr.Plot(calibration("test"))
+            pva = gr.Plot(prediction_vs_actual("test"), show_label=False)
+            cal = gr.Plot(calibration("test"), show_label=False)
             gr.Markdown("### Do the three implementations agree?\n" + agreement_text())
-            gr.Plot(coefficient_chart())
-            gr.Plot(training_curve_chart())
+            gr.Plot(coefficient_chart(), show_label=False)
+            gr.Plot(training_curve_chart(), show_label=False)
             block1.change(lambda b: (metrics_table(BLOCK_LABELS[b]), prediction_vs_actual(BLOCK_LABELS[b]), calibration(BLOCK_LABELS[b])),
                           block1, [table, pva, cal])
 
@@ -294,16 +302,20 @@ def build() -> gr.Blocks:
             feat = gr.Dropdown(FEATURES, value="vix_gap", label="Feature")
             fig0, desc0 = feature_distribution("vix_gap")
             desc = gr.Markdown(desc0)
-            dist = gr.Plot(fig0)
+            dist = gr.Plot(fig0, show_label=False)
             feat.change(feature_distribution, feat, [dist, desc])
             with gr.Row():
-                gr.Plot(target_by_year())
-                gr.Plot(vol_ratio_hist())
+                gr.Plot(target_by_year(), show_label=False)
+                gr.Plot(vol_ratio_hist(), show_label=False)
             cum, loo = ablation_tables()
-            gr.Markdown("### Which feature groups earn their place (validation, scikit-learn)")
+            final = METRICS["feature_ablation_val"]["final_feature_set"]
+            gr.Markdown("### Which feature groups earn their place (validation, scikit-learn)\n"
+                        "Both tables use all 11 candidate features. The window shape group lowered validation AUC and had "
+                        f"coefficients near zero, so it was dropped: the final model uses {len(final['features'])} features "
+                        f"(validation AUC {final['val_auc']:.3f}, log loss {final['val_log_loss']:.3f}).")
             with gr.Row():
-                gr.Dataframe(cum, label="Adding groups one at a time", interactive=False)
-                gr.Dataframe(loo, label="Removing one group from the full model", interactive=False)
+                gr.Dataframe(cum, label="Adding candidate groups one at a time", interactive=False)
+                gr.Dataframe(loo, label="Removing one group from the 11-feature candidate model", interactive=False)
             gr.Markdown(
                 "### Data-quality decisions\n"
                 f"1. S&P open dropped: on {q['share_fake_open_1990_2005']:.0%} of days from 1990 to 2005 it equals the previous close.\n"
@@ -326,11 +338,11 @@ def build() -> gr.Blocks:
                 mult = gr.Slider(0.5, 10, value=DEFAULT_K, step=0.5, label="Cost of a miss, as a multiple of a false alarm")
             init = threshold_view("Test (2020 to 2026)", "sklearn", DEFAULT_T, DEFAULT_K)
             with gr.Row():
-                cm = gr.Plot(init[0])
+                cm = gr.Plot(init[0], show_label=False)
                 with gr.Column():
                     summary = gr.Markdown(init[1])
-            curve = gr.Plot(init[2])
-            bt_plot = gr.Plot(init[3])
+            curve = gr.Plot(init[2], show_label=False)
+            bt_plot = gr.Plot(init[3], show_label=False)
             bt_table = gr.Dataframe(init[4], interactive=False, label="Backtest statistics (S&P price return, no costs)")
             for control in (block3, model3, thr, mult):
                 control.change(threshold_view, [block3, model3, thr, mult], [cm, summary, curve, bt_plot, bt_table])
