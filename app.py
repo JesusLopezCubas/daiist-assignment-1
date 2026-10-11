@@ -35,8 +35,17 @@ DEFAULT_K = METRICS["config"]["miss_multiple"]
 DEFAULT_T = METRICS["thresholds"]["chosen_on_val"]["sklearn"]
 
 NAMES = {"sklearn": "scikit-learn", "torch_manual": "PyTorch manual loop", "torch_module": "PyTorch nn.Module"}
-COLORS = {"sklearn": "#2a78d6", "torch_manual": "#eb6834", "torch_module": "#1baf7a"}
+# Two hues only, blue and forest green, checked for colour-blind separation in light and dark mode.
+# scikit-learn (the exact reference) is blue. Both PyTorch versions are green and are told apart
+# by line style (dashed vs dotted) and, in bar charts, by a hatch pattern, never by colour alone.
+BLUE, GREEN = "#2a78d6", "#2b8a3e"
+COLORS = {"sklearn": BLUE, "torch_manual": GREEN, "torch_module": GREEN}
 DASHES = {"sklearn": "solid", "torch_manual": "dash", "torch_module": "dot"}
+PATTERNS = {"sklearn": "", "torch_manual": "", "torch_module": "/"}
+FOREST = gr.themes.Color(c50="#ecf7ef", c100="#d3eedb", c200="#a9dcb8", c300="#79c493", c400="#4aa86b",
+                         c500="#2b8a3e", c600="#237535", c700="#1d5e2f", c800="#1b4332", c900="#143326",
+                         c950="#0b1f17", name="forest")
+THEME = gr.themes.Default(primary_hue=FOREST, secondary_hue="blue")
 GRAY, INK = "#8a8985", "#7a7974"
 BLOCK_LABELS = {"Validation (2015 to 2019)": "val", "Test (2020 to 2026)": "test"}
 
@@ -113,7 +122,8 @@ def coefficient_chart() -> go.Figure:
     fig = go.Figure()
     for m in NAMES:
         fig.add_trace(go.Bar(y=order, x=[coefs[m][c] for c in order], name=NAMES[m], orientation="h",
-                             marker={"color": COLORS[m], "line": {"width": 0}}))
+                             marker={"color": COLORS[m], "line": {"width": 0},
+                                     "pattern": {"shape": PATTERNS[m], "fgcolor": "#ffffff", "solidity": 0.35}}))
     fig.update_layout(barmode="group", bargap=0.25, bargroupgap=0.08, hovermode="y unified")
     return style(fig, "Coefficients on standardized features (same sign and size in all three)", "", "Coefficient", height=520)
 
@@ -124,7 +134,7 @@ def training_curve_chart() -> go.Figure:
     for col in CURVES.columns:
         kind, lr = col.split("_lr_")
         name = f"{'Manual loop' if kind == 'manual' else 'nn.Module'}, lr {lr}"
-        color = COLORS["torch_manual"] if kind == "manual" else COLORS["torch_module"]
+        color = GREEN                                    # both are PyTorch: line style tells them apart
         width = 2.5 if float(lr) == METRICS["tuning"][f"lr_{kind}"] else 1
         fig.add_trace(go.Scatter(x=CURVES.index, y=CURVES[col] - optimum + 1e-9, name=name,
                                  line={"color": color, "width": width, "dash": "solid" if kind == "manual" else "dot"}))
@@ -165,11 +175,12 @@ def target_by_year() -> go.Figure:
     enough = by_year.size() >= 100          # 1990 has a single labelled day after the 1-year warm-up
     rate = by_year["vol_rises"].mean()[enough]
     split_of_year = by_year["split"].agg(lambda s: s.mode()[0])[enough]
-    colors = split_of_year.map({"train": COLORS["sklearn"], "val": COLORS["torch_manual"], "test": COLORS["torch_module"]})
+    block_colors = {"train": BLUE, "val": GRAY, "test": GREEN}
+    colors = split_of_year.map(block_colors)
     fig = go.Figure(go.Bar(x=rate.index, y=rate.values, marker={"color": list(colors), "line": {"width": 0}},
                            hovertemplate="%{x}: %{y:.0%} of days<extra></extra>", showlegend=False))
-    for name, key in (("Train", "sklearn"), ("Validation", "torch_manual"), ("Test", "torch_module")):
-        fig.add_trace(go.Bar(x=[None], y=[None], name=name, marker={"color": COLORS[key]}))
+    for name, key in (("Train", "train"), ("Validation", "val"), ("Test", "test")):
+        fig.add_trace(go.Bar(x=[None], y=[None], name=name, marker={"color": block_colors[key]}))
     fig.update_yaxes(range=[0, 1], tickformat=".0%")
     fig.update_layout(hovermode="closest", bargap=0.2)
     return style(fig, "Target base rate by year: share of days where next month's vol ends up higher", "Share of days")
@@ -352,4 +363,4 @@ def build() -> gr.Blocks:
 demo = build()
 
 if __name__ == "__main__":
-    demo.launch(inbrowser=True)
+    demo.launch(inbrowser=True, theme=THEME)
