@@ -3,7 +3,7 @@
 - **Name**: Jesús López Cubas
 - **Student ID**: 20414
 - **Email**: jlopez.ieu2022@student.ie.edu
-- **Group**: [BBADBA 5A | BBADBA 5B | PPLEDBA 5A | BDBA 3A]
+- **Group**: [BBADBA 5B]
 
 ---
 
@@ -143,9 +143,9 @@ Parkinson, M. (1980). The extreme value method for estimating the variance of th
 
 ## Generative AI use disclosure
 
-I used Claude (Anthropic) for the following, with my professor's approval by email on 11 October 2026:
+I used Claude (Anthropic) for the following:
 
-1. Validating whether my ideas were sound and comparing them with academic research.
-2. Writing the code and finding the most efficient way to run the analyses.
-3. Building and formatting the dashboard.
-4. Drafting the report from my decisions, and correcting grammar and formatting throughout the work.
+1. Validating whether my ideas were sound and comparing them with academic research from decades ago.
+2. Writing the code and finding the most efficient way to run the analyses. Fixing a lot of bugs and problems.
+3. Building and formatting the dashboard. Guiding me through the code for making it interactice as well as informative as possible.
+4. After writing the report, I ran it through Claude to check for any spelling or grammatical errors, as well as formatting issues, to ensure it was ready for submission.
